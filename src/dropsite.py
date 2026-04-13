@@ -270,7 +270,9 @@ class DropSite:
             "last_seen": datetime.now(timezone.utc).isoformat(),
             **meta,
         }
-        agent_file.write_text(json.dumps(data, indent=2))
+        tmp = agent_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.replace(agent_file)
 
     def heartbeat(self, name: str):
         """Update agent's last_seen timestamp."""
@@ -278,7 +280,9 @@ class DropSite:
         if path.exists():
             data = json.loads(path.read_text())
             data["last_seen"] = datetime.now(timezone.utc).isoformat()
-            path.write_text(json.dumps(data, indent=2))
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2))
+            tmp.replace(path)
 
     # ── Stats ──
 
