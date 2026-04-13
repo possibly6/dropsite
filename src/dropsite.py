@@ -140,18 +140,17 @@ class DropSite:
     def _move(self, task: Task, from_dir: str, to_dir: str):
         """Atomically move a task between folders.
         
-        Writes updated task to tmp file in destination, then uses
-        replace() to atomically swap it in and remove the source.
+        Updates the task JSON in the source file, then uses replace()
+        for a single-syscall move. If the process dies at any point,
+        the task exists in exactly one folder.
         """
         src = self._path(from_dir, task.id)
         dst = self._path(to_dir, task.id)
-        tmp = dst.with_suffix(".tmp")
+        # Update source file in place with new task state
+        tmp = src.with_suffix(".tmp")
         tmp.write_text(json.dumps(task.to_dict(), indent=2, default=str))
-        tmp.rename(dst)  # atomic write to destination
-        try:
-            src.unlink()  # clean up source
-        except FileNotFoundError:
-            pass  # already gone (e.g. claim already moved it)
+        tmp.replace(src)  # atomic update in place
+        src.replace(dst)  # atomic move — single syscall, no two-folder window
 
     # ── Submit ──
 
@@ -288,6 +287,34 @@ class DropSite:
     def stats(self) -> dict:
         """Quick workspace stats (task folders only)."""
         return {d: len(list((self.workspace / d).glob("*.json"))) for d in self.TASK_DIRS}
+
+    # ── Reaper ──
+
+    def reap_stale(self, timeout_seconds: float = 300) -> list:
+        """Move stale active/ tasks back to inbox for retry.
+        
+        A task is considered stale if it's been in active/ longer than
+        timeout_seconds without completing. This handles crashed agents
+        that orphan work. Returns list of reaped task IDs.
+        """
+        reaped = []
+        now = datetime.now(timezone.utc)
+        for f in (self.workspace / "active").glob("*.json"):
+            try:
+                task = self._read(f)
+                # Find when task was claimed (last 'active' entry in history)
+                claimed_at = None
+                for entry in reversed(task.history):
+                    if entry.get("status") == "active":
+                        claimed_at = datetime.fromisoformat(entry["at"])
+                        break
+                if claimed_at and (now - claimed_at).total_seconds() > timeout_seconds:
+                    task.log("inbox", reaped=True, reason="stale_timeout")
+                    self._move(task, "active", "inbox")
+                    reaped.append(task.id)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+        return reaped
 
 
 # ═══════════════════════════════════════════
