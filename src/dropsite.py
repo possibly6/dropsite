@@ -67,7 +67,7 @@ class Task:
 class TaskBuilder:
     def __init__(self, title: str, created_by: str):
         self._data = {
-            "id": uuid.uuid4().hex[:8],
+            "id": uuid.uuid4().hex,
             "title": title,
             "created_by": created_by,
         }
@@ -113,7 +113,9 @@ class TaskBuilder:
 class DropSite:
     """Filesystem-based agent communication hub."""
 
-    DIRS = ["inbox", "active", "done", "failed", "blocked", "feedback", "agents"]
+    TASK_DIRS = ["inbox", "active", "done", "failed", "blocked", "feedback"]
+    META_DIRS = ["agents"]
+    DIRS = TASK_DIRS + META_DIRS
 
     def __init__(self, workspace: str):
         self.workspace = Path(workspace)
@@ -136,13 +138,20 @@ class DropSite:
         return Task.from_dict(json.loads(path.read_text()))
 
     def _move(self, task: Task, from_dir: str, to_dir: str):
+        """Atomically move a task between folders.
+        
+        Writes updated task to tmp file in destination, then uses
+        replace() to atomically swap it in and remove the source.
+        """
         src = self._path(from_dir, task.id)
         dst = self._path(to_dir, task.id)
-        self._write(to_dir, task)
+        tmp = dst.with_suffix(".tmp")
+        tmp.write_text(json.dumps(task.to_dict(), indent=2, default=str))
+        tmp.rename(dst)  # atomic write to destination
         try:
-            src.unlink()
+            src.unlink()  # clean up source
         except FileNotFoundError:
-            pass
+            pass  # already gone (e.g. claim already moved it)
 
     # ── Submit ──
 
@@ -155,18 +164,23 @@ class DropSite:
     # ── Claim ──
 
     def claim(self, agent_name: str, task_id: str) -> Optional[Task]:
-        """Atomically claim a task from inbox → active."""
+        """Atomically claim a task from inbox → active.
+        
+        Uses os.rename as the atomic primitive. The first agent to
+        successfully rename the file wins. All others get FileNotFoundError.
+        """
         src = self._path("inbox", task_id)
         dst = self._path("active", task_id)
         try:
-            task = self._read(src)
-            task.log("active", claimed_by=agent_name)
-            task.assigned_to = agent_name
-            self._write("active", task)
-            src.unlink()
-            return task
+            src.rename(dst)  # atomic on POSIX — first caller wins
         except FileNotFoundError:
             return None  # another agent got it first
+        # We won the claim — now update metadata in place
+        task = self._read(dst)
+        task.log("active", claimed_by=agent_name)
+        task.assigned_to = agent_name
+        self._write("active", task)  # overwrites with updated metadata
+        return task
 
     # ── Complete ──
 
@@ -272,8 +286,8 @@ class DropSite:
     # ── Stats ──
 
     def stats(self) -> dict:
-        """Quick workspace stats."""
-        return {d: len(list((self.workspace / d).glob("*.json"))) for d in self.DIRS}
+        """Quick workspace stats (task folders only)."""
+        return {d: len(list((self.workspace / d).glob("*.json"))) for d in self.TASK_DIRS}
 
 
 # ═══════════════════════════════════════════

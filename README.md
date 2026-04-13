@@ -45,10 +45,16 @@ If your agents are on the same machine (or same network share), you don't need a
 ## Install
 
 ```bash
-pip install dropsite
+git clone https://github.com/possibly6/dropsite.git
+cd dropsite
 ```
 
-Or just copy `dropsite.py` into your project. It's ~300 lines with zero dependencies.
+Or install directly:
+```bash
+pip install git+https://github.com/possibly6/dropsite.git
+```
+
+The entire library is one file (`src/dropsite.py`, ~300 lines, zero dependencies). You can also just copy it into your project.
 
 ---
 
@@ -57,10 +63,9 @@ Or just copy `dropsite.py` into your project. It's ~300 lines with zero dependen
 ### 1. Create a workspace
 
 ```python
-from dropsite import DropSite
+from src.dropsite import DropSite, TaskBuilder, AgentLoop
 
 ds = DropSite("./workspace")
-ds.init()
 ```
 
 This creates the directory structure. That's your entire infrastructure.
@@ -75,30 +80,29 @@ ds.register_agent("coder", role="builder")
 ### 3. Drop a task
 
 ```python
-ds.drop_task(
-    from_agent="larry",
-    to_agent="coder",
-    task_type="write_code",
-    payload={
-        "description": "Build a REST API for user authentication",
-        "language": "python",
-        "framework": "fastapi"
-    }
+task = (
+    TaskBuilder("Build auth API", "larry")
+    .describe("Build a REST API for user authentication")
+    .context({"language": "python", "framework": "fastapi"})
+    .assign("coder")
+    .tag("code")
+    .build()
 )
+ds.submit(task)
 ```
 
-This writes a JSON file to `coder`'s inbox. That's the entire communication mechanism.
+This writes a JSON file to the inbox. That's the entire communication mechanism.
 
 ### 4. Pick up work
 
 ```python
 # From the coder agent's perspective
-tasks = ds.check_inbox("coder")
-task = ds.claim_task("coder", tasks[0]["id"])
+tasks = ds.list_tasks("inbox", tags=["code"])
+claimed = ds.claim("coder", tasks[0].id)
 
 # Do the work...
 
-ds.complete_task("coder", task["id"], result={
+ds.complete(claimed, result={
     "files_created": ["api.py", "models.py"],
     "status": "done",
     "notes": "Used FastAPI with JWT auth"
@@ -108,8 +112,19 @@ ds.complete_task("coder", task["id"], result={
 ### 5. Check results
 
 ```python
-done = ds.get_completed("larry")
-# Or just: cat workspace/.dropsite/done/*.json
+done = ds.list_tasks("done")
+# Or just: cat workspace/done/*.json
+```
+
+### 6. Or use AgentLoop to automate it
+
+```python
+def code_handler(task):
+    # Your agent logic here — call an LLM, run a script, whatever
+    return {"files_created": ["api.py"], "status": "done"}
+
+loop = AgentLoop(ds, "coder", handler=code_handler, filter_tags=["code"])
+loop.run()  # polls inbox, claims tasks, runs handler, drops results
 ```
 
 ---
@@ -288,5 +303,5 @@ MIT — do whatever you want with it.
 <p align="center">
   <b>🔻 dropsite</b><br>
   <i>the dead drop for your AI agents</i><br><br>
-  <code>pip install dropsite</code>
+  <code>git clone https://github.com/possibly6/dropsite.git</code>
 </p>
