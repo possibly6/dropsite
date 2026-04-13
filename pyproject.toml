@@ -4,7 +4,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "dropsite"
-version = "0.2.0"
+version = "0.1.0"
 description = "The dead drop for your AI agents. Filesystem-based agent communication."
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,7 +29,7 @@ Repository = "https://github.com/possibly6/dropsite"
 Issues = "https://github.com/possibly6/dropsite/issues"
 
 [project.scripts]
-dropsite = "src.cli:main"
+dropsite = "dropsite.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["dropsite*"]

@@ -8,7 +8,7 @@ Replace the mock with your actual LLM call.
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from src.dropsite import DropSite, TaskBuilder, AgentLoop
+from dropsite import DropSite, TaskBuilder, AgentLoop
 
 ds = DropSite("./llm_workspace")
 

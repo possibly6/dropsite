@@ -9,7 +9,7 @@ They never meet. They just check the drop site.
 import sys, os, time, threading
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from src.dropsite import DropSite, TaskBuilder, AgentLoop
+from dropsite import DropSite, TaskBuilder, AgentLoop
 
 # Create workspace
 ds = DropSite("./demo_workspace")

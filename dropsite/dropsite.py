@@ -225,6 +225,8 @@ class DropSite:
         """Human responds to feedback, task goes back to inbox."""
         path = self._path("feedback", task_id)
         task = self._read(path)
+        if task is None:
+            return
         task.context["_feedback_response"] = response
         task.log("inbox", feedback_received=True)
         self._move(task, "feedback", "inbox")
@@ -240,6 +242,8 @@ class DropSite:
         """Move blocked task back to inbox."""
         path = self._path("blocked", task_id)
         task = self._read(path)
+        if task is None:
+            return
         task.log("inbox", unblocked=True)
         self._move(task, "blocked", "inbox")
 
@@ -250,15 +254,14 @@ class DropSite:
         tasks = []
         folder_path = self.workspace / folder
         for f in sorted(folder_path.glob("*.json")):
-            try:
-                task = self._read(f)
-                if agent and task.assigned_to and task.assigned_to != agent:
-                    continue
-                if tags and not any(t in task.tags for t in tags):
-                    continue
-                tasks.append(task)
-            except (json.JSONDecodeError, KeyError):
+            task = self._read(f)
+            if task is None:
                 continue
+            if agent and task.assigned_to and task.assigned_to != agent:
+                continue
+            if tags and not any(t in task.tags for t in tags):
+                continue
+            tasks.append(task)
         tasks.sort(key=lambda t: (t.priority, t.created_at))
         return tasks
 
@@ -267,7 +270,9 @@ class DropSite:
         for d in self.DIRS:
             path = self._path(d, task_id)
             if path.exists():
-                return self._read(path)
+                task = self._read(path)
+                if task is not None:
+                    return task
         return None
 
     # ── Agent registry ──
@@ -314,20 +319,19 @@ class DropSite:
         reaped = []
         now = datetime.now(timezone.utc)
         for f in (self.workspace / "active").glob("*.json"):
-            try:
-                task = self._read(f)
-                # Find when task was claimed (last 'active' entry in history)
-                claimed_at = None
-                for entry in reversed(task.history):
-                    if entry.get("status") == "active":
-                        claimed_at = datetime.fromisoformat(entry["at"])
-                        break
-                if claimed_at and (now - claimed_at).total_seconds() > timeout_seconds:
-                    task.log("inbox", reaped=True, reason="stale_timeout")
-                    self._move(task, "active", "inbox")
-                    reaped.append(task.id)
-            except (json.JSONDecodeError, KeyError, ValueError):
+            task = self._read(f)
+            if task is None:
                 continue
+            # Find when task was claimed (last 'active' entry in history)
+            claimed_at = None
+            for entry in reversed(task.history):
+                if entry.get("status") == "active":
+                    claimed_at = datetime.fromisoformat(entry["at"])
+                    break
+            if claimed_at and (now - claimed_at).total_seconds() > timeout_seconds:
+                task.log("inbox", reaped=True, reason="stale_timeout")
+                self._move(task, "active", "inbox")
+                reaped.append(task.id)
         return reaped
 
     # ── Aliases (backward compat with README examples) ──

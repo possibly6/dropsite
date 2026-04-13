@@ -7,7 +7,7 @@ Run with: python -m pytest tests/ -v
 import sys, os, threading
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.dropsite import DropSite, TaskBuilder, Task
+from dropsite import DropSite, TaskBuilder, Task
 import tempfile
 import shutil
 
