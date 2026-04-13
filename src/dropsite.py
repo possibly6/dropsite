@@ -215,8 +215,7 @@ class DropSite:
         task = self._read(path)
         task.context["_feedback_response"] = response
         task.log("inbox", feedback_received=True)
-        self._write("inbox", task)
-        path.unlink()
+        self._move(task, "feedback", "inbox")
 
     # ── Block ──
 
@@ -230,8 +229,7 @@ class DropSite:
         path = self._path("blocked", task_id)
         task = self._read(path)
         task.log("inbox", unblocked=True)
-        self._write("inbox", task)
-        path.unlink()
+        self._move(task, "blocked", "inbox")
 
     # ── Query ──
 
@@ -315,6 +313,14 @@ class DropSite:
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
         return reaped
+
+    # ── Aliases (backward compat with README examples) ──
+
+    drop_task = submit
+    claim_task = claim
+    complete_task = complete
+    check_inbox = lambda self, agent=None, **kw: self.list_tasks("inbox", agent=agent, **kw)
+    get_completed = lambda self, agent=None: self.list_tasks("done", agent=agent)
 
 
 # ═══════════════════════════════════════════
