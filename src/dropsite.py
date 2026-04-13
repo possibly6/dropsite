@@ -134,8 +134,18 @@ class DropSite:
         tmp.write_text(json.dumps(task.to_dict(), indent=2, default=str))
         tmp.rename(path)  # atomic on POSIX
 
-    def _read(self, path: Path) -> Task:
-        return Task.from_dict(json.loads(path.read_text()))
+    def _read(self, path: Path) -> Optional[Task]:
+        """Read a task from a JSON file. Returns None if corrupt."""
+        try:
+            return Task.from_dict(json.loads(path.read_text()))
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            # Move corrupt file to failed/ so it doesn't wedge the pipeline
+            failed_path = self.workspace / "failed" / path.name
+            try:
+                path.replace(failed_path)
+            except Exception:
+                pass
+            return None
 
     def _move(self, task: Task, from_dir: str, to_dir: str):
         """Atomically move a task between folders.
@@ -176,6 +186,8 @@ class DropSite:
             return None  # another agent got it first
         # We won the claim — now update metadata in place
         task = self._read(dst)
+        if task is None:
+            return None  # corrupt file, already moved to failed/
         task.log("active", claimed_by=agent_name)
         task.assigned_to = agent_name
         self._write("active", task)  # overwrites with updated metadata
